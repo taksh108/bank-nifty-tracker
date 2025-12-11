@@ -9,7 +9,10 @@ const app = express();
 const cache = new NodeCache({ stdTTL: 60 }); // Cache for 60 seconds
 
 // File path for persistent storage
-const MULTIPLIERS_FILE = path.join(__dirname, 'multipliers.json');
+// Use /tmp directory on Render (writable), fallback to current directory
+const MULTIPLIERS_FILE = process.env.NODE_ENV === 'production' 
+  ? path.join('/tmp', 'multipliers.json')
+  : path.join(__dirname, 'multipliers.json');
 
 // Load multipliers from file or initialize with defaults
 let stockMultipliers = {};
@@ -17,10 +20,13 @@ try {
   if (fs.existsSync(MULTIPLIERS_FILE)) {
     const data = fs.readFileSync(MULTIPLIERS_FILE, 'utf8');
     stockMultipliers = JSON.parse(data);
-    console.log('Loaded multipliers from file');
+    console.log('Loaded multipliers from file:', MULTIPLIERS_FILE);
+  } else {
+    console.log('No existing multipliers file found at:', MULTIPLIERS_FILE);
   }
 } catch (error) {
-  console.log('No existing multipliers file, starting with defaults');
+  console.log('Error loading multipliers file:', error.message);
+  console.log('Starting with default multipliers');
 }
 
 // Initialize default multipliers for all stocks
@@ -38,10 +44,17 @@ BUFFER_BANK_NIFTY_STOCKS.forEach(symbol => {
 // Save multipliers to file
 function saveMultipliersToFile() {
   try {
+    // Ensure directory exists
+    const dir = path.dirname(MULTIPLIERS_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    
     fs.writeFileSync(MULTIPLIERS_FILE, JSON.stringify(stockMultipliers, null, 2));
-    console.log('Multipliers saved to file');
+    console.log('Multipliers saved to file:', MULTIPLIERS_FILE);
   } catch (error) {
-    console.error('Error saving multipliers:', error);
+    console.error('Error saving multipliers to file:', error.message);
+    console.log('Multipliers will be kept in memory only');
   }
 }
 
@@ -261,6 +274,8 @@ app.put('/api/multipliers/:symbol', (req, res) => {
     const { multiplier } = req.body;
     const value = parseFloat(multiplier);
     
+    console.log(`Updating multiplier for ${symbol}: ${multiplier}`);
+    
     if (isNaN(value) || value < 0) {
       return res.status(400).json({
         success: false,
@@ -270,14 +285,16 @@ app.put('/api/multipliers/:symbol', (req, res) => {
     
     stockMultipliers[symbol.toUpperCase()] = value;
     
-    // Save to file
-    saveMultipliersToFile();
+    // Save to file (async to avoid blocking)
+    setTimeout(() => saveMultipliersToFile(), 0);
     
     res.json({
       success: true,
-      data: { symbol: symbol.toUpperCase(), multiplier: value }
+      data: { symbol: symbol.toUpperCase(), multiplier: value },
+      saved: true
     });
   } catch (error) {
+    console.error('Error updating multiplier:', error);
     res.status(400).json({
       success: false,
       error: error.message

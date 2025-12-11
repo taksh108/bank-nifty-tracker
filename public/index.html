@@ -325,6 +325,11 @@
         let stocksData = [];
         let updateTimer = null; // Debounce timer
 
+        // Get API base URL (production or localhost)
+        const API_BASE_URL = window.location.hostname === 'localhost' 
+            ? 'http://localhost:3000'
+            : window.location.origin;
+
         // Format number to Indian currency
         function formatCurrency(value) {
             if (!value) return '-';
@@ -391,7 +396,7 @@
             // Set new timer for debounced update
             updateTimer = setTimeout(async () => {
                 try {
-                    const response = await fetch(`http://localhost:3000/api/multipliers/${symbol}`, {
+                    const response = await fetch(`${API_BASE_URL}/api/multipliers/${symbol}`, {
                         method: 'PUT',
                         headers: {
                             'Content-Type': 'application/json'
@@ -420,7 +425,7 @@
         // Load multipliers from server
         async function loadMultipliersFromServer() {
             try {
-                const response = await fetch('http://localhost:3000/api/multipliers');
+                const response = await fetch(`${API_BASE_URL}/api/multipliers`);
                 if (!response.ok) {
                     throw new Error('Failed to load multipliers');
                 }
@@ -437,7 +442,7 @@
         // Fetch Bank Nifty index
         async function fetchBankNifty() {
             try {
-                const response = await fetch('http://localhost:3000/api/banknifty');
+                const response = await fetch(`${API_BASE_URL}/api/banknifty`);
                 const result = await response.json();
                 
                 if (result.success && result.data) {
@@ -471,7 +476,7 @@
             fetchBankNifty();
 
             try {
-                const response = await fetch('http://localhost:3000/api/stocks');
+                const response = await fetch(`${API_BASE_URL}/api/stocks`);
                 const result = await response.json();
 
                 if (result.success) {
