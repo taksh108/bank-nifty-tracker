@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bank Nifty 12 Tracker</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #dc2626 0%, #16a34a 50%, #059669 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            color: #333;
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .header-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .status {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .status-badge {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: 600;
+        }
+
+        .status-badge.live {
+            background: #10b981;
+            color: white;
+        }
+
+        .status-badge.closed {
+            background: #ef4444;
+            color: white;
+        }
+
+        .refresh-btn {
+            background: #16a34a;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .refresh-btn:hover {
+            background: #15803d;
+            transform: translateY(-2px);
+        }
+
+        .refresh-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 50px;
+            color: white;
+            font-size: 1.5em;
+        }
+
+        .table-container {
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead {
+            background: linear-gradient(135deg, #dc2626 0%, #16a34a 100%);
+            color: white;
+        }
+
+        tfoot {
+            background: #f9fafb;
+            border-top: 2px solid #e5e7eb;
+        }
+
+        tfoot td {
+            padding: 15px;
+            font-size: 1.1em;
+        }
+
+        th {
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.95em;
+        }
+
+        tbody tr {
+            border-bottom: 1px solid #e5e7eb;
+            transition: background 0.2s;
+        }
+
+        tbody tr:hover {
+            background: #f9fafb;
+        }
+
+        td {
+            padding: 15px;
+            font-size: 0.95em;
+        }
+
+        .stock-name {
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .stock-symbol {
+            color: #6b7280;
+            font-size: 0.85em;
+        }
+
+        .price {
+            font-weight: 600;
+            color: #1f2937;
+            font-size: 1.05em;
+        }
+
+        .price-up {
+            color: #10b981;
+        }
+
+        .price-down {
+            color: #ef4444;
+        }
+
+        .multiplier-input {
+            width: 120px;
+            padding: 8px;
+            border: 2px solid #e5e7eb;
+            border-radius: 6px;
+            font-size: 0.95em;
+            text-align: center;
+        }
+
+        .multiplier-input:focus {
+            outline: none;
+            border-color: #16a34a;
+        }
+
+        .calculated-value {
+            font-weight: 700;
+            font-size: 1.1em;
+        }
+
+        .calculated-value.higher {
+            color: #16a34a; /* Green for values higher than live price */
+        }
+
+        .calculated-value.lower {
+            color: #dc2626; /* Red for values lower than live price */
+        }
+
+        .calculated-value.equal {
+            color: #6b7280; /* Gray for equal values */
+        }
+
+        .error {
+            background: #fee2e2;
+            color: #dc2626;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .last-updated {
+            color: #6b7280;
+            font-size: 0.85em;
+            margin-top: 5px;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+
+            h1 {
+                font-size: 1.5em;
+            }
+
+            .table-container {
+                overflow-x: auto;
+            }
+
+            table {
+                font-size: 0.85em;
+            }
+
+            th, td {
+                padding: 10px 8px;
+            }
+
+            .multiplier-input {
+                width: 100px;
+            }
+        }
+
+        .disclaimer {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            text-align: center;
+            color: #6b7280;
+            font-size: 0.9em;
+        }
+
+        .disclaimer strong {
+            color: #ef4444;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏦 Bank Nifty 12 Tracker</h1>
+            <div id="bankNiftyIndex" style="background: linear-gradient(90deg, #fbbf24, #f59e0b); padding: 10px 20px; border-radius: 8px; margin: 10px 0; display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: bold; color: #1f2937; font-size: 1.1em;">BANK NIFTY INDEX</span>
+                    <div style="display: flex; gap: 20px; align-items: center;">
+                        <span id="bankNiftyPrice" style="font-weight: bold; font-size: 1.3em; color: #1f2937;">Loading...</span>
+                        <span id="bankNiftyChange" style="font-weight: 600; font-size: 1em;"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="header-info">
+                <div class="status">
+                    <span class="status-badge" id="marketStatus">Loading...</span>
+                    <span class="last-updated" id="lastUpdated">Loading...</span>
+                </div>
+                <button class="refresh-btn" id="refreshBtn" onclick="fetchStocks()">
+                    🔄 Refresh Data
+                </button>
+            </div>
+        </header>
+
+        <div id="errorContainer"></div>
+        <div id="loadingContainer" class="loading">Loading stock data...</div>
+
+        <div class="table-container" id="tableContainer" style="display: none;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Company</th>
+                        <th>Previous Close</th>
+                        <th>Live Price</th>
+                        <th>Multiplier</th>
+                        <th>Calculated Value</th>
+                    </tr>
+                </thead>
+                <tbody id="stockTableBody">
+                </tbody>
+                <tfoot>
+                    <tr id="totalRow" style="display: none;">
+                        <td colspan="2" style="text-align: right; font-weight: bold;">TOTAL:</td>
+                        <td class="price" style="font-weight: bold; background: #f3f4f6;" id="totalPreviousClose">₹0.00</td>
+                        <td class="price" style="font-weight: bold; background: #f3f4f6;" id="totalLivePrice">₹0.00</td>
+                        <td></td>
+                        <td class="price" style="font-weight: bold; background: #f3f4f6; font-size: 1.2em;" id="totalCalculatedValue">₹0.0000</td>
+                    </tr>
+                    <tr id="differenceRow" style="display: none;">
+                        <td colspan="2" style="text-align: right; font-weight: bold; font-size: 0.9em;">DIFFERENCE:</td>
+                        <td></td>
+                        <td class="price" style="font-weight: bold; background: #fef3c7;" id="diffLivePrevious">₹0.00</td>
+                        <td></td>
+                        <td class="price" style="font-weight: bold; background: #dbeafe;" id="diffCalculatedLive">₹0.0000</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <div class="disclaimer">
+            <strong>Disclaimer:</strong> This is not investment advice. Data may be delayed. 
+            Always consult with a financial advisor before making investment decisions.
+        </div>
+    </div>
+
+    <script>
+        let stocksData = [];
+        let updateTimer = null; // Debounce timer
+
+        // Format number to Indian currency
+        function formatCurrency(value) {
+            if (!value) return '-';
+            return '₹' + value.toFixed(2);
+        }
+
+        // Calculate price change indicator
+        function getPriceChange(current, previous) {
+            if (!current || !previous) return '';
+            return current > previous ? 'price-up' : current < previous ? 'price-down' : '';
+        }
+
+        // Get calculated value CSS class based on comparison with live price
+        function getCalculatedValueClass(calculatedValue, livePrice) {
+            if (calculatedValue > livePrice) {
+                return 'higher';
+            } else if (calculatedValue < livePrice) {
+                return 'lower';
+            } else {
+                return 'equal';
+            }
+        }
+
+        // Update multiplier and recalculate
+        function updateMultiplier(index, value) {
+            const multiplier = parseFloat(value) || 1;
+            stocksData[index].multiplier = multiplier;
+            stocksData[index].calculatedValue = stocksData[index].livePrice * multiplier;
+            
+            // Update only the calculated value cell
+            const calcCell = document.getElementById(`calc-${index}`);
+            calcCell.textContent = '₹' + stocksData[index].calculatedValue.toFixed(4);
+            
+            // Update color based on comparison with live price
+            updateCalculatedValueColor(calcCell, stocksData[index].calculatedValue, stocksData[index].livePrice);
+            
+            // Update totals
+            updateTotals();
+            
+            // Save to server with debouncing
+            saveMultiplierToServer(stocksData[index].symbol, multiplier);
+        }
+
+        // Update calculated value color based on comparison with live price
+        function updateCalculatedValueColor(element, calculatedValue, livePrice) {
+            element.classList.remove('higher', 'lower', 'equal');
+            
+            if (calculatedValue > livePrice) {
+                element.classList.add('higher');
+            } else if (calculatedValue < livePrice) {
+                element.classList.add('lower');
+            } else {
+                element.classList.add('equal');
+            }
+        }
+
+        // Save single multiplier to server with debouncing
+        function saveMultiplierToServer(symbol, multiplier) {
+            // Clear existing timer
+            if (updateTimer) {
+                clearTimeout(updateTimer);
+            }
+            
+            // Set new timer for debounced update
+            updateTimer = setTimeout(async () => {
+                try {
+                    const response = await fetch(`http://localhost:3000/api/multipliers/${symbol}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ multiplier })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error('Failed to save multiplier');
+                    }
+                    
+                    const result = await response.json();
+                    console.log(`Saved multiplier for ${symbol}:`, result.data);
+                } catch (error) {
+                    console.error('Error saving multiplier:', error);
+                    // Fallback to localStorage on error
+                    const multipliers = {};
+                    stocksData.forEach(stock => {
+                        multipliers[stock.symbol] = stock.multiplier;
+                    });
+                    localStorage.setItem('stockMultipliers', JSON.stringify(multipliers));
+                }
+            }, 500); // Debounce delay of 500ms
+        }
+
+        // Load multipliers from server
+        async function loadMultipliersFromServer() {
+            try {
+                const response = await fetch('http://localhost:3000/api/multipliers');
+                if (!response.ok) {
+                    throw new Error('Failed to load multipliers');
+                }
+                const result = await response.json();
+                return result.data || {};
+            } catch (error) {
+                console.error('Error loading multipliers from server:', error);
+                // Fallback to localStorage
+                const saved = localStorage.getItem('stockMultipliers');
+                return saved ? JSON.parse(saved) : {};
+            }
+        }
+
+        // Fetch Bank Nifty index
+        async function fetchBankNifty() {
+            try {
+                const response = await fetch('http://localhost:3000/api/banknifty');
+                const result = await response.json();
+                
+                if (result.success && result.data) {
+                    const indexDiv = document.getElementById('bankNiftyIndex');
+                    const priceElement = document.getElementById('bankNiftyPrice');
+                    const changeElement = document.getElementById('bankNiftyChange');
+                    
+                    const livePrice = result.data.livePrice || 0;
+                    const previousClose = result.data.previousClose || 0;
+                    const change = livePrice - previousClose;
+                    const changePercent = previousClose > 0 ? ((change / previousClose) * 100).toFixed(2) : 0;
+                    
+                    priceElement.textContent = '₹' + livePrice.toFixed(2);
+                    changeElement.textContent = `${change >= 0 ? '▲' : '▼'} ${Math.abs(change).toFixed(2)} (${changePercent}%)`;
+                    changeElement.style.color = change >= 0 ? '#16a34a' : '#dc2626';
+                    
+                    indexDiv.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error fetching Bank Nifty:', error);
+            }
+        }
+
+        // Fetch stocks from API
+        async function fetchStocks() {
+            const refreshBtn = document.getElementById('refreshBtn');
+            refreshBtn.disabled = true;
+            refreshBtn.textContent = '⏳ Loading...';
+
+            // Fetch Bank Nifty index
+            fetchBankNifty();
+
+            try {
+                const response = await fetch('http://localhost:3000/api/stocks');
+                const result = await response.json();
+
+                if (result.success) {
+                    // Multipliers now come from server
+                    stocksData = result.data.map(stock => ({
+                        ...stock,
+                        multiplier: stock.multiplier || 1,
+                        calculatedValue: stock.livePrice * (stock.multiplier || 1)
+                    }));
+
+                    renderTable();
+                    updateStatus(result.data[0]?.marketState);
+                    document.getElementById('lastUpdated').textContent = 
+                        'Last updated: ' + new Date().toLocaleTimeString('en-IN');
+                    
+                    document.getElementById('errorContainer').innerHTML = '';
+                } else {
+                    showError('Failed to fetch data: ' + result.error);
+                }
+            } catch (error) {
+                showError('Connection error: ' + error.message);
+            } finally {
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = '🔄 Refresh Data';
+                document.getElementById('loadingContainer').style.display = 'none';
+                document.getElementById('tableContainer').style.display = 'block';
+            }
+        }
+
+        // Render table
+        function renderTable() {
+            const tbody = document.getElementById('stockTableBody');
+            tbody.innerHTML = '';
+
+            let totalPreviousClose = 0;
+            let totalLivePrice = 0;
+            let totalCalculatedValue = 0;
+
+            stocksData.forEach((stock, index) => {
+                const row = tbody.insertRow();
+                const priceChangeClass = getPriceChange(stock.livePrice, stock.previousClose);
+                
+                // Add to totals
+                totalPreviousClose += stock.previousClose || 0;
+                totalLivePrice += stock.livePrice || 0;
+                totalCalculatedValue += stock.calculatedValue || 0;
+                
+                row.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td>
+                        <div class="stock-name">${stock.name}</div>
+                        <div class="stock-symbol">${stock.symbol}</div>
+                    </td>
+                    <td class="price">${formatCurrency(stock.previousClose)}</td>
+                    <td class="price ${priceChangeClass}">${formatCurrency(stock.livePrice)}</td>
+                    <td>
+                        <input 
+                            type="number" 
+                            class="multiplier-input" 
+                            value="${stock.multiplier}"
+                            min="0.01"
+                            step="0.01"
+                            onchange="updateMultiplier(${index}, this.value)"
+                        />
+                    </td>
+                    <td class="calculated-value ${getCalculatedValueClass(stock.calculatedValue, stock.livePrice)}" id="calc-${index}">
+                        ₹${stock.calculatedValue.toFixed(4)}
+                    </td>
+                `;
+            });
+
+            // Update totals
+            updateTotals();
+        }
+
+        // Update totals row
+        function updateTotals() {
+            let totalPreviousClose = 0;
+            let totalLivePrice = 0;
+            let totalCalculatedValue = 0;
+
+            stocksData.forEach(stock => {
+                totalPreviousClose += stock.previousClose || 0;
+                totalLivePrice += stock.livePrice || 0;
+                totalCalculatedValue += stock.calculatedValue || 0;
+            });
+
+            document.getElementById('totalPreviousClose').textContent = formatCurrency(totalPreviousClose);
+            document.getElementById('totalLivePrice').textContent = formatCurrency(totalLivePrice);
+            document.getElementById('totalCalculatedValue').textContent = '₹' + totalCalculatedValue.toFixed(4);
+            
+            // Update color of total calculated value
+            const totalCalcElement = document.getElementById('totalCalculatedValue');
+            updateCalculatedValueColor(totalCalcElement, totalCalculatedValue, totalLivePrice);
+            
+            // Calculate and display differences
+            const diffLivePrevious = totalLivePrice - totalPreviousClose;
+            const diffCalculatedLive = totalCalculatedValue - totalLivePrice;
+            
+            // Update difference values
+            const diffLivePrevElement = document.getElementById('diffLivePrevious');
+            diffLivePrevElement.textContent = formatCurrency(diffLivePrevious);
+            diffLivePrevElement.style.color = diffLivePrevious >= 0 ? '#16a34a' : '#dc2626';
+            
+            const diffCalcLiveElement = document.getElementById('diffCalculatedLive');
+            diffCalcLiveElement.textContent = '₹' + diffCalculatedLive.toFixed(4);
+            diffCalcLiveElement.style.color = diffCalculatedLive >= 0 ? '#16a34a' : '#dc2626';
+            
+            // Show percentage change as well
+            const percentChange1 = totalPreviousClose > 0 ? ((diffLivePrevious / totalPreviousClose) * 100).toFixed(2) : 0;
+            const percentChange2 = totalLivePrice > 0 ? ((diffCalculatedLive / totalLivePrice) * 100).toFixed(2) : 0;
+            
+            diffLivePrevElement.textContent += ` (${percentChange1}%)`;
+            diffCalcLiveElement.textContent += ` (${percentChange2}%)`;
+            
+            // Show all rows
+            document.getElementById('totalRow').style.display = '';
+            document.getElementById('differenceRow').style.display = '';
+        }
+
+        // Update market status
+        function updateStatus(marketState) {
+            const badge = document.getElementById('marketStatus');
+            if (marketState === 'REGULAR' || marketState === 'PRE') {
+                badge.className = 'status-badge live';
+                badge.textContent = '🟢 Market Open';
+            } else {
+                badge.className = 'status-badge closed';
+                badge.textContent = '🔴 Market Closed';
+            }
+        }
+
+        // Show error
+        function showError(message) {
+            document.getElementById('errorContainer').innerHTML = `
+                <div class="error">⚠️ ${message}</div>
+            `;
+        }
+
+        // Auto-refresh every 2 minutes during market hours
+        setInterval(() => {
+            const hour = new Date().getHours();
+            const minute = new Date().getMinutes();
+            
+            // Auto refresh between 9:15 AM to 3:30 PM IST
+            if ((hour === 9 && minute >= 15) || (hour > 9 && hour < 15) || (hour === 15 && minute <= 30)) {
+                fetchStocks();
+                fetchBankNifty();
+            }
+        }, 5000); // 5 seconds
+
+        // Initial load
+        fetchStocks();
+    </script>
+</body>
+</html>
