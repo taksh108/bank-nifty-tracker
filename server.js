@@ -8,14 +8,22 @@ const path = require('path');
 const app = express();
 const cache = new NodeCache({ stdTTL: 60 }); // Cache for 60 seconds
 
-// File path for persistent storage
+// File paths for persistent storage
 // Use /tmp directory on Render (writable), fallback to current directory
 const MULTIPLIERS_FILE = process.env.NODE_ENV === 'production' 
   ? path.join('/tmp', 'multipliers.json')
   : path.join(__dirname, 'multipliers.json');
 
+const METADATA_FILE = process.env.NODE_ENV === 'production' 
+  ? path.join('/tmp', 'metadata.json')
+  : path.join(__dirname, 'metadata.json');
+
 // Load multipliers from file or initialize with defaults
 let stockMultipliers = {};
+let multipliersMetadata = {
+  lastSaved: null,
+  pin: '1234' // Default PIN (can be changed via environment variable)
+};
 try {
   if (fs.existsSync(MULTIPLIERS_FILE)) {
     const data = fs.readFileSync(MULTIPLIERS_FILE, 'utf8');
@@ -27,6 +35,24 @@ try {
 } catch (error) {
   console.log('Error loading multipliers file:', error.message);
   console.log('Starting with default multipliers');
+}
+
+// Load metadata
+try {
+  if (fs.existsSync(METADATA_FILE)) {
+    const metaData = fs.readFileSync(METADATA_FILE, 'utf8');
+    const loadedMetadata = JSON.parse(metaData);
+    multipliersMetadata = { ...multipliersMetadata, ...loadedMetadata };
+    console.log('Loaded metadata from file:', METADATA_FILE);
+  }
+} catch (error) {
+  console.log('Error loading metadata file:', error.message);
+}
+
+// Override PIN from environment variable if provided
+if (process.env.MULTIPLIER_PIN) {
+  multipliersMetadata.pin = process.env.MULTIPLIER_PIN;
+  console.log('PIN set from environment variable');
 }
 
 // Initialize default multipliers for all stocks
@@ -44,6 +70,9 @@ BUFFER_BANK_NIFTY_STOCKS.forEach(symbol => {
 // Save multipliers to file
 function saveMultipliersToFile() {
   try {
+    // Update last saved timestamp
+    multipliersMetadata.lastSaved = new Date().toISOString();
+    
     // Ensure directory exists
     const dir = path.dirname(MULTIPLIERS_FILE);
     if (!fs.existsSync(dir)) {
@@ -51,10 +80,11 @@ function saveMultipliersToFile() {
     }
     
     fs.writeFileSync(MULTIPLIERS_FILE, JSON.stringify(stockMultipliers, null, 2));
-    console.log('Multipliers saved to file:', MULTIPLIERS_FILE);
+    fs.writeFileSync(METADATA_FILE, JSON.stringify(multipliersMetadata, null, 2));
+    console.log('Multipliers and metadata saved to files');
   } catch (error) {
-    console.error('Error saving multipliers to file:', error.message);
-    console.log('Multipliers will be kept in memory only');
+    console.error('Error saving to files:', error.message);
+    console.log('Data will be kept in memory only');
   }
 }
 
@@ -235,8 +265,42 @@ app.get('/api/stocks/:symbol', async (req, res) => {
 app.get('/api/multipliers', (req, res) => {
   res.json({
     success: true,
-    data: stockMultipliers
+    data: stockMultipliers,
+    metadata: {
+      lastSaved: multipliersMetadata.lastSaved
+    }
   });
+});
+
+// API endpoint to verify PIN
+app.post('/api/verify-pin', (req, res) => {
+  try {
+    const { pin } = req.body;
+    
+    if (!pin) {
+      return res.status(400).json({
+        success: false,
+        error: 'PIN is required'
+      });
+    }
+    
+    if (pin === multipliersMetadata.pin) {
+      res.json({
+        success: true,
+        message: 'PIN verified successfully'
+      });
+    } else {
+      res.status(401).json({
+        success: false,
+        error: 'Invalid PIN'
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
 });
 
 // API endpoint to update all multipliers
@@ -267,14 +331,29 @@ app.post('/api/multipliers', (req, res) => {
   }
 });
 
-// API endpoint to update single multiplier
+// API endpoint to update single multiplier (with PIN protection)
 app.put('/api/multipliers/:symbol', (req, res) => {
   try {
     const { symbol } = req.params;
-    const { multiplier } = req.body;
+    const { multiplier, pin } = req.body;
     const value = parseFloat(multiplier);
     
-    console.log(`Updating multiplier for ${symbol}: ${multiplier}`);
+    console.log(`Attempting to update multiplier for ${symbol}: ${multiplier}`);
+    
+    // Verify PIN first
+    if (!pin) {
+      return res.status(400).json({
+        success: false,
+        error: 'PIN is required to update multipliers'
+      });
+    }
+    
+    if (pin !== multipliersMetadata.pin) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid PIN'
+      });
+    }
     
     if (isNaN(value) || value < 0) {
       return res.status(400).json({
@@ -291,7 +370,7 @@ app.put('/api/multipliers/:symbol', (req, res) => {
     res.json({
       success: true,
       data: { symbol: symbol.toUpperCase(), multiplier: value },
-      saved: true
+      lastSaved: new Date().toISOString()
     });
   } catch (error) {
     console.error('Error updating multiplier:', error);

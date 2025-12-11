@@ -178,6 +178,11 @@
             text-align: center;
         }
 
+        .multiplier-input:disabled {
+            background: #f3f4f6;
+            cursor: not-allowed;
+        }
+
         .multiplier-input:focus {
             outline: none;
             border-color: #16a34a;
@@ -268,6 +273,9 @@
                     </div>
                 </div>
             </div>
+            <div id="lastSavedInfo" style="background: #e5e7eb; padding: 8px 15px; border-radius: 6px; margin: 10px 0; text-align: center; color: #4b5563; font-size: 0.9em; display: none;">
+                <span>📏 Last saved: </span><span id="lastSavedTime">Never</span>
+            </div>
             <div class="header-info">
                 <div class="status">
                     <span class="status-badge" id="marketStatus">Loading...</span>
@@ -324,6 +332,7 @@
     <script>
         let stocksData = [];
         let updateTimer = null; // Debounce timer
+        let isAuthenticated = false; // PIN verification status
 
         // Get API base URL (production or localhost)
         const API_BASE_URL = window.location.hostname === 'localhost' 
@@ -353,9 +362,28 @@
             }
         }
 
-        // Update multiplier and recalculate
-        function updateMultiplier(index, value) {
+        // Update multiplier and recalculate (with PIN protection)
+        async function updateMultiplier(index, value) {
             const multiplier = parseFloat(value) || 1;
+            
+            // Check if PIN is required
+            if (!isAuthenticated) {
+                const pin = await promptForPIN();
+                if (!pin) {
+                    // Reset input to original value
+                    document.querySelector(`input[onchange="updateMultiplier(${index}, this.value)"]`).value = stocksData[index].multiplier;
+                    return;
+                }
+                
+                const verified = await verifyPIN(pin);
+                if (!verified) {
+                    alert('❌ Invalid PIN! Please try again.');
+                    document.querySelector(`input[onchange="updateMultiplier(${index}, this.value)"]`).value = stocksData[index].multiplier;
+                    return;
+                }
+                isAuthenticated = true;
+            }
+            
             stocksData[index].multiplier = multiplier;
             stocksData[index].calculatedValue = stocksData[index].livePrice * multiplier;
             
@@ -369,8 +397,35 @@
             // Update totals
             updateTotals();
             
-            // Save to server with debouncing
+            // Save to server with PIN
             saveMultiplierToServer(stocksData[index].symbol, multiplier);
+        }
+
+        // Prompt user for PIN
+        function promptForPIN() {
+            return new Promise((resolve) => {
+                const pin = prompt('🔒 Enter PIN to edit multipliers:');
+                resolve(pin);
+            });
+        }
+
+        // Verify PIN with server
+        async function verifyPIN(pin) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/verify-pin`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ pin })
+                });
+                
+                const result = await response.json();
+                return result.success;
+            } catch (error) {
+                console.error('Error verifying PIN:', error);
+                return false;
+            }
         }
 
         // Update calculated value color based on comparison with live price
@@ -386,7 +441,7 @@
             }
         }
 
-        // Save single multiplier to server with debouncing
+        // Save single multiplier to server with PIN
         function saveMultiplierToServer(symbol, multiplier) {
             // Clear existing timer
             if (updateTimer) {
@@ -396,28 +451,39 @@
             // Set new timer for debounced update
             updateTimer = setTimeout(async () => {
                 try {
+                    // Get the last entered PIN (stored temporarily)
+                    const pin = sessionStorage.getItem('tempPIN') || await promptForPIN();
+                    
                     const response = await fetch(`${API_BASE_URL}/api/multipliers/${symbol}`, {
                         method: 'PUT',
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({ multiplier })
+                        body: JSON.stringify({ multiplier, pin })
                     });
                     
                     if (!response.ok) {
-                        throw new Error('Failed to save multiplier');
+                        const error = await response.json();
+                        throw new Error(error.error || 'Failed to save multiplier');
                     }
                     
                     const result = await response.json();
                     console.log(`Saved multiplier for ${symbol}:`, result.data);
+                    
+                    // Update last saved time
+                    if (result.lastSaved) {
+                        updateLastSavedTime(result.lastSaved);
+                    }
+                    
+                    // Store PIN temporarily for this session
+                    sessionStorage.setItem('tempPIN', pin);
+                    
                 } catch (error) {
                     console.error('Error saving multiplier:', error);
-                    // Fallback to localStorage on error
-                    const multipliers = {};
-                    stocksData.forEach(stock => {
-                        multipliers[stock.symbol] = stock.multiplier;
-                    });
-                    localStorage.setItem('stockMultipliers', JSON.stringify(multipliers));
+                    alert('❌ Error saving multiplier: ' + error.message);
+                    // Reset authentication on error
+                    isAuthenticated = false;
+                    sessionStorage.removeItem('tempPIN');
                 }
             }, 500); // Debounce delay of 500ms
         }
@@ -430,12 +496,39 @@
                     throw new Error('Failed to load multipliers');
                 }
                 const result = await response.json();
+                
+                // Update last saved time if available
+                if (result.metadata && result.metadata.lastSaved) {
+                    updateLastSavedTime(result.metadata.lastSaved);
+                }
+                
                 return result.data || {};
             } catch (error) {
                 console.error('Error loading multipliers from server:', error);
                 // Fallback to localStorage
                 const saved = localStorage.getItem('stockMultipliers');
                 return saved ? JSON.parse(saved) : {};
+            }
+        }
+
+        // Update last saved time display
+        function updateLastSavedTime(timestamp) {
+            try {
+                const date = new Date(timestamp);
+                const timeString = date.toLocaleString('en-IN', {
+                    timeZone: 'Asia/Kolkata',
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+                
+                document.getElementById('lastSavedTime').textContent = timeString;
+                document.getElementById('lastSavedInfo').style.display = 'block';
+            } catch (error) {
+                console.error('Error updating last saved time:', error);
             }
         }
 

@@ -3,6 +3,7 @@ node_modules/
 
 # Data files
 multipliers.json
+metadata.json
 
 # Environment variables
 .env
