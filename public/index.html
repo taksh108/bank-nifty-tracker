@@ -264,15 +264,6 @@
     <div class="container">
         <header>
             <h1>🏦 Bank Nifty 12 Tracker</h1>
-            <div id="bankNiftyIndex" style="background: linear-gradient(90deg, #fbbf24, #f59e0b); padding: 10px 20px; border-radius: 8px; margin: 10px 0; display: none;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-weight: bold; color: #1f2937; font-size: 1.1em;">BANK NIFTY INDEX</span>
-                    <div style="display: flex; gap: 20px; align-items: center;">
-                        <span id="bankNiftyPrice" style="font-weight: bold; font-size: 1.3em; color: #1f2937;">Loading...</span>
-                        <span id="bankNiftyChange" style="font-weight: 600; font-size: 1em;"></span>
-                    </div>
-                </div>
-            </div>
             <div id="lastSavedInfo" style="background: #e5e7eb; padding: 8px 15px; border-radius: 6px; margin: 10px 0; text-align: center; color: #4b5563; font-size: 0.9em; display: none;">
                 <span>📏 Last saved: </span><span id="lastSavedTime">Never</span>
             </div>
@@ -295,12 +286,12 @@
                 <thead>
                     <tr>
                         <th>#</th>
-                        <th>Company</th>
-                        <th>Previous Close</th>
-                        <th>Live Price</th>
-                        <th>Market Cap</th>
+                        <th>Bank Name</th>
+                        <th>Mkt Cap (Cr)</th>
+                        <th>Prev Close</th>
+                        <th>Live</th>
                         <th>Multiplier</th>
-                        <th>Calculated Value</th>
+                        <th>Result</th>
                     </tr>
                 </thead>
                 <tbody id="stockTableBody">
@@ -308,17 +299,17 @@
                 <tfoot>
                     <tr id="totalRow" style="display: none;">
                         <td colspan="2" style="text-align: right; font-weight: bold;">TOTAL:</td>
+                        <td class="price" style="font-weight: bold; background: #f3f4f6;" id="totalMarketCap">0.00</td>
                         <td class="price" style="font-weight: bold; background: #f3f4f6;" id="totalPreviousClose">₹0.00</td>
                         <td class="price" style="font-weight: bold; background: #f3f4f6;" id="totalLivePrice">₹0.00</td>
-                        <td></td>
-                        <td></td>
+                        <td class="price" style="font-weight: bold; background: #f3f4f6;" id="totalMultiplier">0</td>
                         <td class="price" style="font-weight: bold; background: #f3f4f6; font-size: 1.2em;" id="totalCalculatedValue">₹0.0000</td>
                     </tr>
                     <tr id="differenceRow" style="display: none;">
                         <td colspan="2" style="text-align: right; font-weight: bold; font-size: 0.9em;">DIFFERENCE:</td>
                         <td></td>
-                        <td class="price" style="font-weight: bold; background: #fef3c7;" id="diffLivePrevious">₹0.00</td>
                         <td></td>
+                        <td class="price" style="font-weight: bold; background: #fef3c7;" id="diffLivePrevious">₹0.00</td>
                         <td></td>
                         <td class="price" style="font-weight: bold; background: #dbeafe;" id="diffCalculatedLive">₹0.0000</td>
                     </tr>
@@ -326,8 +317,18 @@
             </table>
         </div>
 
+        <div id="bankNiftyIndex" style="background: linear-gradient(90deg, #fbbf24, #f59e0b); padding: 15px 25px; border-radius: 10px; margin-top: 20px; display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-weight: bold; color: #1f2937; font-size: 1.1em;">BANK NIFTY INDEX</span>
+                <div style="display: flex; gap: 20px; align-items: center;">
+                    <span id="bankNiftyPrice" style="font-weight: bold; font-size: 1.3em; color: #1f2937;">Loading...</span>
+                    <span id="bankNiftyChange" style="font-weight: 600; font-size: 1em;"></span>
+                </div>
+            </div>
+        </div>
+
         <div class="disclaimer">
-            <strong>Disclaimer:</strong> This is not investment advice. Data may be delayed. 
+            <strong>Disclaimer:</strong> This is not investment advice. Data may be delayed.
             Always consult with a financial advisor before making investment decisions.
         </div>
     </div>
@@ -348,18 +349,12 @@
             return '₹' + value.toFixed(2);
         }
 
-        // Format market cap (in crores/lakhs)
+        // Format market cap (plain number in crores)
         function formatMarketCap(value) {
             if (!value) return '-';
             // Market cap is typically in rupees, convert to crores
             const crores = value / 10000000; // 1 crore = 10 million
-            if (crores >= 100000) {
-                return '₹' + (crores / 100000).toFixed(2) + 'L Cr'; // Lakh Crores
-            } else if (crores >= 1) {
-                return '₹' + crores.toFixed(2) + ' Cr';
-            } else {
-                return '₹' + (value / 100000).toFixed(2) + ' L';
-            }
+            return crores.toFixed(2);
         }
 
         // Calculate price change indicator
@@ -640,13 +635,13 @@
                         <div class="stock-name">${stock.name}</div>
                         <div class="stock-symbol">${stock.symbol}</div>
                     </td>
+                    <td class="price">${formatMarketCap(stock.marketCap)}</td>
                     <td class="price">${formatCurrency(stock.previousClose)}</td>
                     <td class="price ${priceChangeClass}">${formatCurrency(stock.livePrice)}</td>
-                    <td class="price">${formatMarketCap(stock.marketCap)}</td>
                     <td>
-                        <input 
-                            type="number" 
-                            class="multiplier-input" 
+                        <input
+                            type="number"
+                            class="multiplier-input"
                             value="${stock.multiplier}"
                             min="0.01"
                             step="0.01"
@@ -665,18 +660,26 @@
 
         // Update totals row
         function updateTotals() {
+            let totalMarketCap = 0;
             let totalPreviousClose = 0;
             let totalLivePrice = 0;
+            let totalMultiplier = 0;
             let totalCalculatedValue = 0;
 
             stocksData.forEach(stock => {
+                totalMarketCap += stock.marketCap || 0;
                 totalPreviousClose += stock.previousClose || 0;
                 totalLivePrice += stock.livePrice || 0;
+                totalMultiplier += stock.multiplier || 0;
                 totalCalculatedValue += stock.calculatedValue || 0;
             });
 
-            document.getElementById('totalPreviousClose').textContent = formatCurrency(totalPreviousClose);
-            document.getElementById('totalLivePrice').textContent = formatCurrency(totalLivePrice);
+            // Market cap in crores
+            const marketCapCrores = totalMarketCap / 10000000;
+            document.getElementById('totalMarketCap').textContent = marketCapCrores.toFixed(4);
+            document.getElementById('totalPreviousClose').textContent = '₹' + totalPreviousClose.toFixed(4);
+            document.getElementById('totalLivePrice').textContent = '₹' + totalLivePrice.toFixed(4);
+            document.getElementById('totalMultiplier').textContent = totalMultiplier.toFixed(4);
             document.getElementById('totalCalculatedValue').textContent = '₹' + totalCalculatedValue.toFixed(4);
             
             // Update color of total calculated value
