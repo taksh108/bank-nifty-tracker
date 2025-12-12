@@ -298,6 +298,7 @@
                         <th>Company</th>
                         <th>Previous Close</th>
                         <th>Live Price</th>
+                        <th>Market Cap</th>
                         <th>Multiplier</th>
                         <th>Calculated Value</th>
                     </tr>
@@ -310,12 +311,14 @@
                         <td class="price" style="font-weight: bold; background: #f3f4f6;" id="totalPreviousClose">₹0.00</td>
                         <td class="price" style="font-weight: bold; background: #f3f4f6;" id="totalLivePrice">₹0.00</td>
                         <td></td>
+                        <td></td>
                         <td class="price" style="font-weight: bold; background: #f3f4f6; font-size: 1.2em;" id="totalCalculatedValue">₹0.0000</td>
                     </tr>
                     <tr id="differenceRow" style="display: none;">
                         <td colspan="2" style="text-align: right; font-weight: bold; font-size: 0.9em;">DIFFERENCE:</td>
                         <td></td>
                         <td class="price" style="font-weight: bold; background: #fef3c7;" id="diffLivePrevious">₹0.00</td>
+                        <td></td>
                         <td></td>
                         <td class="price" style="font-weight: bold; background: #dbeafe;" id="diffCalculatedLive">₹0.0000</td>
                     </tr>
@@ -343,6 +346,20 @@
         function formatCurrency(value) {
             if (!value) return '-';
             return '₹' + value.toFixed(2);
+        }
+
+        // Format market cap (in crores/lakhs)
+        function formatMarketCap(value) {
+            if (!value) return '-';
+            // Market cap is typically in rupees, convert to crores
+            const crores = value / 10000000; // 1 crore = 10 million
+            if (crores >= 100000) {
+                return '₹' + (crores / 100000).toFixed(2) + 'L Cr'; // Lakh Crores
+            } else if (crores >= 1) {
+                return '₹' + crores.toFixed(2) + ' Cr';
+            } else {
+                return '₹' + (value / 100000).toFixed(2) + ' L';
+            }
         }
 
         // Calculate price change indicator
@@ -625,6 +642,7 @@
                     </td>
                     <td class="price">${formatCurrency(stock.previousClose)}</td>
                     <td class="price ${priceChangeClass}">${formatCurrency(stock.livePrice)}</td>
+                    <td class="price">${formatMarketCap(stock.marketCap)}</td>
                     <td>
                         <input 
                             type="number" 
