@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 
 const app = express();
-const cache = new NodeCache({ stdTTL: 5 }); // Cache for 5 seconds
+const cache = new NodeCache({ stdTTL: 5 }); // Cache for 5 seconds (safe with batched API: ~720 calls/hour)
 
 // ============================================
 // REDIS SETUP FOR PERSISTENT STORAGE
@@ -178,19 +178,19 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// Default Bank Nifty 12 stocks (fallback if dynamic fetch fails)
+// Default Bank Nifty 12 stocks (custom order)
 const DEFAULT_BANK_NIFTY_STOCKS = [
   { symbol: 'HDFCBANK', name: 'HDFC Bank' },
   { symbol: 'ICICIBANK', name: 'ICICI Bank' },
+  { symbol: 'AXISBANK', name: 'Axis Bank' },
   { symbol: 'SBIN', name: 'State Bank of India' },
   { symbol: 'KOTAKBANK', name: 'Kotak Mahindra Bank' },
-  { symbol: 'AXISBANK', name: 'Axis Bank' },
-  { symbol: 'INDUSINDBK', name: 'IndusInd Bank' },
-  { symbol: 'CANBK', name: 'Canara Bank' },
   { symbol: 'FEDERALBNK', name: 'Federal Bank' },
+  { symbol: 'INDUSINDBK', name: 'IndusInd Bank' },
   { symbol: 'IDFCFIRSTB', name: 'IDFC First Bank' },
-  { symbol: 'PNB', name: 'Punjab National Bank' },
   { symbol: 'BANKBARODA', name: 'Bank of Baroda' },
+  { symbol: 'CANBK', name: 'Canara Bank' },
+  { symbol: 'PNB', name: 'Punjab National Bank' },
   { symbol: 'AUBANK', name: 'AU Small Finance Bank' }
 ];
 
@@ -266,15 +266,26 @@ async function fetchBankNiftyConstituents() {
   }
 }
 
-// Update Bank Nifty stocks list
+// Update Bank Nifty stocks - only logs changes, keeps custom order
 async function updateBankNiftyStocks() {
   const constituents = await fetchBankNiftyConstituents();
   if (constituents) {
-    BANK_NIFTY_STOCKS = constituents;
-    console.log('Bank Nifty stocks updated:', BANK_NIFTY_STOCKS.map(s => s.symbol).join(', '));
+    const currentSymbols = new Set(BANK_NIFTY_STOCKS.map(s => s.symbol));
+    const newSymbols = new Set(constituents.map(s => s.symbol));
+
+    // Check for any changes (don't update order, just log)
+    const added = constituents.filter(s => !currentSymbols.has(s.symbol));
+    const removed = BANK_NIFTY_STOCKS.filter(s => !newSymbols.has(s.symbol));
+
+    if (added.length > 0) {
+      console.log('⚠️  New stocks in Bank Nifty:', added.map(s => s.symbol).join(', '));
+    }
+    if (removed.length > 0) {
+      console.log('⚠️  Removed from Bank Nifty:', removed.map(s => s.symbol).join(', '));
+    }
 
     // Initialize multipliers for any new stocks
-    BANK_NIFTY_STOCKS.forEach(stock => {
+    constituents.forEach(stock => {
       if (!stockMultipliers[stock.symbol]) {
         stockMultipliers[stock.symbol] = 1;
       }
@@ -282,73 +293,168 @@ async function updateBankNiftyStocks() {
   }
 }
 
-// Initial fetch and periodic update (every 24 hours)
+// Check for constituent changes (every 24 hours) - doesn't change order
 updateBankNiftyStocks();
 setInterval(updateBankNiftyStocks, 24 * 60 * 60 * 1000);
 
-// Fetch stock data from Yahoo Finance
+// Cache for NSE data (market cap) - longer TTL since it doesn't change often
+const nseCache = new NodeCache({ stdTTL: 300 }); // 5 minutes
+
+// Fetch market cap from NSE India API
+async function fetchNSEData(symbol) {
+  const cacheKey = `nse_${symbol}`;
+  const cached = nseCache.get(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const url = `https://www.nseindia.com/api/quote-equity?symbol=${symbol}`;
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': `https://www.nseindia.com/get-quotes/equity?symbol=${symbol}`
+      },
+      timeout: 5000
+    });
+
+    const data = response.data;
+    const issuedSize = data?.securityInfo?.issuedSize;
+    const lastPrice = data?.priceInfo?.lastPrice;
+    const marketCap = issuedSize && lastPrice ? issuedSize * lastPrice : null;
+
+    const nseData = {
+      marketCap,
+      fiftyTwoWeekHigh: data?.priceInfo?.weekHighLow?.max,
+      fiftyTwoWeekLow: data?.priceInfo?.weekHighLow?.min
+    };
+
+    nseCache.set(cacheKey, nseData);
+    return nseData;
+  } catch (err) {
+    // Silently fail - market cap is optional
+    return null;
+  }
+}
+
+// Fetch ALL stocks in parallel using Yahoo for prices + NSE for market cap
+async function fetchAllStocksBatched() {
+  const cacheKey = 'all_stocks_batch';
+  const cached = cache.get(cacheKey);
+
+  if (cached) {
+    console.log('Cache hit for all stocks');
+    return cached;
+  }
+
+  try {
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    };
+
+    // Fetch all stocks in parallel - Yahoo for prices, NSE for market cap
+    const promises = BANK_NIFTY_STOCKS.map(async (stock) => {
+      try {
+        // Fetch Yahoo chart data and NSE data in parallel
+        const [chartRes, nseData] = await Promise.all([
+          axios.get(
+            `https://query1.finance.yahoo.com/v8/finance/chart/${stock.symbol}.NS`,
+            { headers, timeout: 5000 }
+          ),
+          fetchNSEData(stock.symbol)
+        ]);
+
+        const meta = chartRes.data?.chart?.result?.[0]?.meta;
+
+        if (meta) {
+          return {
+            symbol: stock.symbol,
+            data: {
+              symbol: stock.symbol,
+              livePrice: meta.regularMarketPrice || null,
+              previousClose: meta.chartPreviousClose || null,
+              currency: meta.currency || 'INR',
+              marketState: meta.marketState,
+              dayHigh: meta.regularMarketDayHigh || null,
+              dayLow: meta.regularMarketDayLow || null,
+              volume: meta.regularMarketVolume || null,
+              marketCap: nseData?.marketCap || null,
+              fiftyTwoWeekHigh: nseData?.fiftyTwoWeekHigh || null,
+              fiftyTwoWeekLow: nseData?.fiftyTwoWeekLow || null,
+              lastUpdated: new Date().toISOString()
+            }
+          };
+        }
+      } catch (err) {
+        console.error(`Failed ${stock.symbol}: ${err.message}`);
+      }
+      return { symbol: stock.symbol, data: null };
+    });
+
+    const results = await Promise.all(promises);
+    const stockDataMap = {};
+
+    results.forEach(r => {
+      if (r.data) {
+        stockDataMap[r.symbol] = r.data;
+      }
+    });
+
+    const count = Object.keys(stockDataMap).length;
+    if (count > 0) {
+      console.log(`Fetched ${count} stocks`);
+      cache.set(cacheKey, stockDataMap);
+      return stockDataMap;
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Batch fetch failed:', error.message);
+    return null;
+  }
+}
+
+// Fallback: Fetch single stock data using chart endpoint (more reliable)
 async function fetchStockData(symbol) {
   try {
     const cacheKey = `stock_${symbol}`;
     const cached = cache.get(cacheKey);
 
     if (cached) {
-      console.log(`Cache hit for ${symbol}`);
       return cached;
     }
 
-    // Fetch both chart data and quote summary in parallel
-    const chartUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}.NS`;
-    const summaryUrl = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}.NS?modules=price,summaryDetail`;
-
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}.NS?interval=1d&range=5d`;
     const headers = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'application/json',
-      'Accept-Language': 'en-US,en;q=0.9'
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': '*/*',
+      'Origin': 'https://finance.yahoo.com',
+      'Referer': 'https://finance.yahoo.com/'
     };
 
-    const [chartResponse, summaryResponse] = await Promise.all([
-      axios.get(chartUrl, { headers, timeout: 8000 }),
-      axios.get(summaryUrl, { headers, timeout: 8000 }).catch(err => {
-        console.log(`Quote summary failed for ${symbol}: ${err.message}`);
-        return null;
-      })
-    ]);
+    const response = await axios.get(url, { headers, timeout: 8000 });
+    const result = response.data?.chart?.result?.[0];
 
-    const result = chartResponse.data.chart.result[0];
+    if (!result) {
+      throw new Error('No data returned');
+    }
+
     const meta = result.meta;
-    const quotes = result.indicators.quote[0];
-
-    // Get historical data for previous closes
-    const closes = quotes.close.filter(c => c !== null);
-
-    // Extract quote summary data (includes market cap, 52-week data)
-    const priceData = summaryResponse?.data?.quoteSummary?.result?.[0]?.price || {};
-    const summaryDetail = summaryResponse?.data?.quoteSummary?.result?.[0]?.summaryDetail || {};
 
     const stockData = {
       symbol: symbol,
-      livePrice: meta.regularMarketPrice || closes[closes.length - 1],
-      previousClose: meta.chartPreviousClose || closes[closes.length - 2],
-      dayBeforeClose: closes[closes.length - 3] || meta.chartPreviousClose,
-      currency: meta.currency,
+      livePrice: meta.regularMarketPrice || null,
+      previousClose: meta.chartPreviousClose || meta.previousClose || null,
+      currency: meta.currency || 'INR',
       marketState: meta.marketState,
-      // Market cap from price module (raw value)
-      marketCap: priceData.marketCap?.raw || null,
-      // Additional useful data
-      fiftyTwoWeekHigh: summaryDetail.fiftyTwoWeekHigh?.raw || null,
-      fiftyTwoWeekLow: summaryDetail.fiftyTwoWeekLow?.raw || null,
-      dayHigh: priceData.regularMarketDayHigh?.raw || meta.regularMarketDayHigh || null,
-      dayLow: priceData.regularMarketDayLow?.raw || meta.regularMarketDayLow || null,
-      volume: priceData.regularMarketVolume?.raw || null,
-      avgVolume: summaryDetail.averageVolume?.raw || null,
+      dayHigh: meta.regularMarketDayHigh || null,
+      dayLow: meta.regularMarketDayLow || null,
+      volume: meta.regularMarketVolume || null,
       lastUpdated: new Date().toISOString()
     };
 
     cache.set(cacheKey, stockData);
-    const mcapStr = stockData.marketCap ? `₹${(stockData.marketCap / 10000000).toFixed(0)}Cr` : 'N/A';
-    console.log(`Fetched ${symbol}: ₹${stockData.livePrice} | MCap: ${mcapStr}`);
-
+    console.log(`Fetched ${symbol}: ₹${stockData.livePrice}`);
     return stockData;
   } catch (error) {
     console.error(`Error fetching ${symbol}:`, error.message);
@@ -356,8 +462,6 @@ async function fetchStockData(symbol) {
       symbol: symbol,
       livePrice: null,
       previousClose: null,
-      dayBeforeClose: null,
-      marketCap: null,
       error: error.message
     };
   }
@@ -403,22 +507,34 @@ app.get('/api/banknifty', async (req, res) => {
   }
 });
 
-// API endpoint to get all Bank Nifty stocks
+// API endpoint to get all Bank Nifty stocks (uses batched API call)
 app.get('/api/stocks', async (req, res) => {
   try {
-    console.log('Fetching all Bank Nifty stocks...');
-    
-    const promises = BANK_NIFTY_STOCKS.map(async (stock) => {
-      const data = await fetchStockData(stock.symbol);
-      return {
-        ...stock,
-        ...data,
-        multiplier: stockMultipliers[stock.symbol] || 1
-      };
-    });
+    // Try batched fetch first (1 API call for all stocks)
+    const batchedData = await fetchAllStocksBatched();
 
-    const results = await Promise.all(promises);
-    
+    let results;
+    if (batchedData) {
+      // Use batched data
+      results = BANK_NIFTY_STOCKS.map(stock => ({
+        ...stock,
+        ...(batchedData[stock.symbol] || {}),
+        multiplier: stockMultipliers[stock.symbol] || 1
+      }));
+    } else {
+      // Fallback to individual fetches
+      console.log('Falling back to individual stock fetches...');
+      const promises = BANK_NIFTY_STOCKS.map(async (stock) => {
+        const data = await fetchStockData(stock.symbol);
+        return {
+          ...stock,
+          ...data,
+          multiplier: stockMultipliers[stock.symbol] || 1
+        };
+      });
+      results = await Promise.all(promises);
+    }
+
     res.json({
       success: true,
       timestamp: new Date().toISOString(),
