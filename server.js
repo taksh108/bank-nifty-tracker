@@ -65,7 +65,13 @@ async function loadFromRedis() {
 
     if (metadata) {
       const loadedMetadata = typeof metadata === 'string' ? JSON.parse(metadata) : metadata;
+      // Don't overwrite PIN from environment variable
+      const envPin = process.env.MULTIPLIER_PIN;
       multipliersMetadata = { ...multipliersMetadata, ...loadedMetadata };
+      // Restore environment PIN if set (takes priority over stored PIN)
+      if (envPin) {
+        multipliersMetadata.pin = envPin;
+      }
       console.log('✅ Loaded metadata from Redis');
     }
 
@@ -94,7 +100,13 @@ function loadFromFile() {
     if (fs.existsSync(METADATA_FILE)) {
       const metaData = fs.readFileSync(METADATA_FILE, 'utf8');
       const loadedMetadata = JSON.parse(metaData);
+      // Don't overwrite PIN from environment variable
+      const envPin = process.env.MULTIPLIER_PIN;
       multipliersMetadata = { ...multipliersMetadata, ...loadedMetadata };
+      // Restore environment PIN if set (takes priority over stored PIN)
+      if (envPin) {
+        multipliersMetadata.pin = envPin;
+      }
       console.log('Loaded metadata from file');
     }
   } catch (error) {
