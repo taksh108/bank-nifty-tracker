@@ -305,9 +305,17 @@
                         <td class="price" style="font-weight: bold; background: #f3f4f6;" id="totalMultiplier">0</td>
                         <td class="price" style="font-weight: bold; background: #f3f4f6; font-size: 1.2em;" id="totalCalculatedValue">₹0.0000</td>
                     </tr>
-                    <tr id="differenceRow" style="display: none;">
-                        <td colspan="2" style="text-align: right; font-weight: bold; font-size: 0.9em;">DIFFERENCE:</td>
+                    <tr id="prevMktCapRow" style="display: none;">
+                        <td colspan="2" style="text-align: right; font-weight: bold; font-size: 0.9em;">PREV MKT CAP:</td>
+                        <td class="price" style="font-weight: bold; background: #e5e7eb;" id="totalPrevMarketCap">0.00</td>
                         <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    <tr id="differenceRow" style="display: none;">
+                        <td colspan="2" style="text-align: right; font-weight: bold; font-size: 0.9em;">MKT CAP CHANGE:</td>
+                        <td class="price" style="font-weight: bold; background: #fef3c7;" id="diffMarketCap">0.00</td>
                         <td></td>
                         <td class="price" style="font-weight: bold; background: #fef3c7;" id="diffLivePrevious">₹0.00</td>
                         <td></td>
@@ -670,6 +678,7 @@
         // Update totals row
         function updateTotals() {
             let totalMarketCap = 0;
+            let totalPrevMarketCap = 0;
             let totalPreviousClose = 0;
             let totalLivePrice = 0;
             let totalMultiplier = 0;
@@ -677,6 +686,10 @@
 
             stocksData.forEach(stock => {
                 totalMarketCap += stock.marketCap || 0;
+                // Calculate previous market cap: marketCap * (previousClose / livePrice)
+                if (stock.marketCap && stock.livePrice && stock.previousClose) {
+                    totalPrevMarketCap += stock.marketCap * (stock.previousClose / stock.livePrice);
+                }
                 totalPreviousClose += stock.previousClose || 0;
                 totalLivePrice += stock.livePrice || 0;
                 totalMultiplier += stock.multiplier || 0;
@@ -685,38 +698,49 @@
 
             // Market cap in crores
             const marketCapCrores = totalMarketCap / 10000000;
+            const prevMarketCapCrores = totalPrevMarketCap / 10000000;
             document.getElementById('totalMarketCap').textContent = marketCapCrores.toFixed(4);
+            document.getElementById('totalPrevMarketCap').textContent = prevMarketCapCrores.toFixed(4);
             document.getElementById('totalPreviousClose').textContent = '₹' + totalPreviousClose.toFixed(4);
             document.getElementById('totalLivePrice').textContent = '₹' + totalLivePrice.toFixed(4);
             document.getElementById('totalMultiplier').textContent = totalMultiplier.toFixed(4);
             document.getElementById('totalCalculatedValue').textContent = '₹' + totalCalculatedValue.toFixed(4);
-            
+
             // Update color of total calculated value
             const totalCalcElement = document.getElementById('totalCalculatedValue');
             updateCalculatedValueColor(totalCalcElement, totalCalculatedValue, totalLivePrice);
-            
+
             // Calculate and display differences
             const diffLivePrevious = totalLivePrice - totalPreviousClose;
             const diffCalculatedLive = totalCalculatedValue - totalLivePrice;
-            
+            const diffMarketCap = marketCapCrores - prevMarketCapCrores;
+
+            // Update market cap change
+            const diffMktCapElement = document.getElementById('diffMarketCap');
+            diffMktCapElement.textContent = diffMarketCap.toFixed(4);
+            diffMktCapElement.style.color = diffMarketCap >= 0 ? '#16a34a' : '#dc2626';
+            const mktCapPercentChange = prevMarketCapCrores > 0 ? ((diffMarketCap / prevMarketCapCrores) * 100).toFixed(2) : 0;
+            diffMktCapElement.textContent += ` (${mktCapPercentChange}%)`;
+
             // Update difference values
             const diffLivePrevElement = document.getElementById('diffLivePrevious');
             diffLivePrevElement.textContent = formatCurrency(diffLivePrevious);
             diffLivePrevElement.style.color = diffLivePrevious >= 0 ? '#16a34a' : '#dc2626';
-            
+
             const diffCalcLiveElement = document.getElementById('diffCalculatedLive');
             diffCalcLiveElement.textContent = '₹' + diffCalculatedLive.toFixed(4);
             diffCalcLiveElement.style.color = diffCalculatedLive >= 0 ? '#16a34a' : '#dc2626';
-            
+
             // Show percentage change as well
             const percentChange1 = totalPreviousClose > 0 ? ((diffLivePrevious / totalPreviousClose) * 100).toFixed(2) : 0;
             const percentChange2 = totalLivePrice > 0 ? ((diffCalculatedLive / totalLivePrice) * 100).toFixed(2) : 0;
-            
+
             diffLivePrevElement.textContent += ` (${percentChange1}%)`;
             diffCalcLiveElement.textContent += ` (${percentChange2}%)`;
-            
+
             // Show all rows
             document.getElementById('totalRow').style.display = '';
+            document.getElementById('prevMktCapRow').style.display = '';
             document.getElementById('differenceRow').style.display = '';
         }
 
