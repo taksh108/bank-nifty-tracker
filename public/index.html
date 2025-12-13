@@ -329,14 +329,7 @@
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <span style="font-weight: bold; color: #1f2937; font-size: 1.1em;">BANK NIFTY INDEX</span>
                 <div style="display: flex; gap: 20px; align-items: center;">
-                    <div style="text-align: right;">
-                        <div style="font-size: 0.8em; color: #4b5563;">Prev Close</div>
-                        <span id="bankNiftyPrevClose" style="font-weight: 600; font-size: 1em; color: #1f2937;">-</span>
-                    </div>
-                    <div style="text-align: right;">
-                        <div style="font-size: 0.8em; color: #4b5563;">Live</div>
-                        <span id="bankNiftyPrice" style="font-weight: bold; font-size: 1.3em; color: #1f2937;">Loading...</span>
-                    </div>
+                    <span id="bankNiftyPrice" style="font-weight: bold; font-size: 1.3em; color: #1f2937;">Loading...</span>
                     <span id="bankNiftyChange" style="font-weight: 600; font-size: 1em;"></span>
                 </div>
             </div>
@@ -567,7 +560,6 @@
 
                 if (result.success && result.data) {
                     const indexDiv = document.getElementById('bankNiftyIndex');
-                    const prevCloseElement = document.getElementById('bankNiftyPrevClose');
                     const priceElement = document.getElementById('bankNiftyPrice');
                     const changeElement = document.getElementById('bankNiftyChange');
 
@@ -576,7 +568,6 @@
                     const change = livePrice - previousClose;
                     const changePercent = previousClose > 0 ? ((change / previousClose) * 100).toFixed(2) : 0;
 
-                    prevCloseElement.textContent = '₹' + previousClose.toFixed(2);
                     priceElement.textContent = '₹' + livePrice.toFixed(2);
                     changeElement.textContent = `${change >= 0 ? '▲' : '▼'} ${Math.abs(change).toFixed(2)} (${changePercent}%)`;
                     changeElement.style.color = change >= 0 ? '#16a34a' : '#dc2626';
