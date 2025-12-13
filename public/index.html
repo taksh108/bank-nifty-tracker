@@ -319,7 +319,7 @@
                         <td></td>
                         <td class="price" style="font-weight: bold; background: #fef3c7;" id="diffLivePrevious">₹0.00</td>
                         <td></td>
-                        <td class="price" style="font-weight: bold; background: #dbeafe;" id="diffCalculatedLive">₹0.0000</td>
+                        <td></td>
                     </tr>
                 </tfoot>
             </table>
@@ -712,7 +712,6 @@
 
             // Calculate and display differences
             const diffLivePrevious = totalLivePrice - totalPreviousClose;
-            const diffCalculatedLive = totalCalculatedValue - totalLivePrice;
             const diffMarketCap = marketCapCrores - prevMarketCapCrores;
 
             // Update market cap change
@@ -727,16 +726,9 @@
             diffLivePrevElement.textContent = formatCurrency(diffLivePrevious);
             diffLivePrevElement.style.color = diffLivePrevious >= 0 ? '#16a34a' : '#dc2626';
 
-            const diffCalcLiveElement = document.getElementById('diffCalculatedLive');
-            diffCalcLiveElement.textContent = '₹' + diffCalculatedLive.toFixed(4);
-            diffCalcLiveElement.style.color = diffCalculatedLive >= 0 ? '#16a34a' : '#dc2626';
-
             // Show percentage change as well
             const percentChange1 = totalPreviousClose > 0 ? ((diffLivePrevious / totalPreviousClose) * 100).toFixed(2) : 0;
-            const percentChange2 = totalLivePrice > 0 ? ((diffCalculatedLive / totalLivePrice) * 100).toFixed(2) : 0;
-
             diffLivePrevElement.textContent += ` (${percentChange1}%)`;
-            diffCalcLiveElement.textContent += ` (${percentChange2}%)`;
 
             // Show all rows
             document.getElementById('totalRow').style.display = '';
