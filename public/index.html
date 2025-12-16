@@ -191,18 +191,19 @@
         .calculated-value {
             font-weight: 700;
             font-size: 1.1em;
+            color: #16a34a !important; /* Always green */
         }
 
         .calculated-value.higher {
-            color: #16a34a; /* Green for values higher than live price */
+            color: #16a34a !important; /* Always green */
         }
 
         .calculated-value.lower {
-            color: #dc2626; /* Red for values lower than live price */
+            color: #16a34a !important; /* Always green */
         }
 
         .calculated-value.equal {
-            color: #6b7280; /* Gray for equal values */
+            color: #16a34a !important; /* Always green */
         }
 
         .error {
@@ -637,13 +638,18 @@
                 totalLivePrice += stock.livePrice || 0;
                 totalCalculatedValue += stock.calculatedValue || 0;
                 
+                // Calculate live market cap using issuedSize for consistency
+                const liveMarketCap = stock.issuedSize && stock.livePrice
+                    ? stock.issuedSize * stock.livePrice
+                    : stock.marketCap;
+
                 row.innerHTML = `
                     <td>${index + 1}</td>
                     <td>
                         <div class="stock-name">${stock.name}</div>
                         <div class="stock-symbol">${stock.symbol}</div>
                     </td>
-                    <td class="price">${formatMarketCap(stock.marketCap)}</td>
+                    <td class="price">${formatMarketCap(liveMarketCap)}</td>
                     <td class="price">${formatCurrency(stock.previousClose)}</td>
                     <td class="price ${priceChangeClass}">${formatCurrency(stock.livePrice)}</td>
                     <td>
@@ -676,9 +682,17 @@
             let totalCalculatedValue = 0;
 
             stocksData.forEach(stock => {
-                totalMarketCap += stock.marketCap || 0;
-                // Calculate previous market cap: marketCap * (previousClose / livePrice)
-                if (stock.marketCap && stock.livePrice && stock.previousClose) {
+                // Calculate market cap using issuedSize and Yahoo prices for consistency
+                if (stock.issuedSize && stock.livePrice) {
+                    totalMarketCap += stock.issuedSize * stock.livePrice;
+                } else {
+                    totalMarketCap += stock.marketCap || 0;
+                }
+                // Calculate previous market cap using issuedSize and previousClose
+                if (stock.issuedSize && stock.previousClose) {
+                    totalPrevMarketCap += stock.issuedSize * stock.previousClose;
+                } else if (stock.marketCap && stock.livePrice && stock.previousClose) {
+                    // Fallback to derived calculation if no issuedSize
                     totalPrevMarketCap += stock.marketCap * (stock.previousClose / stock.livePrice);
                 }
                 totalPreviousClose += stock.previousClose || 0;

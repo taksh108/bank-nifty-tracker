@@ -336,6 +336,7 @@ async function fetchNSEData(symbol) {
     const marketCap = issuedSize && lastPrice ? issuedSize * lastPrice : null;
 
     const nseData = {
+      issuedSize,
       marketCap,
       fiftyTwoWeekHigh: data?.priceInfo?.weekHighLow?.max,
       fiftyTwoWeekLow: data?.priceInfo?.weekHighLow?.min
@@ -390,6 +391,7 @@ async function fetchAllStocksBatched() {
               dayHigh: meta.regularMarketDayHigh || null,
               dayLow: meta.regularMarketDayLow || null,
               volume: meta.regularMarketVolume || null,
+              issuedSize: nseData?.issuedSize || null,
               marketCap: nseData?.marketCap || null,
               fiftyTwoWeekHigh: nseData?.fiftyTwoWeekHigh || null,
               fiftyTwoWeekLow: nseData?.fiftyTwoWeekLow || null,
