@@ -312,6 +312,46 @@ setInterval(updateBankNiftyStocks, 24 * 60 * 60 * 1000);
 // Cache for NSE data (market cap) - longer TTL since it doesn't change often
 const nseCache = new NodeCache({ stdTTL: 300 }); // 5 minutes
 
+// NSE session management
+let nseCookies = null;
+let nseSessionExpiry = 0;
+
+// Get NSE session cookies
+async function getNSESession() {
+  const now = Date.now();
+
+  // Return cached cookies if still valid (15 min session)
+  if (nseCookies && now < nseSessionExpiry) {
+    return nseCookies;
+  }
+
+  try {
+    const response = await axios.get('https://www.nseindia.com/', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive'
+      },
+      timeout: 10000
+    });
+
+    // Extract cookies from response headers
+    const setCookies = response.headers['set-cookie'];
+    if (setCookies) {
+      nseCookies = setCookies.map(cookie => cookie.split(';')[0]).join('; ');
+      nseSessionExpiry = now + (15 * 60 * 1000); // 15 minutes
+      console.log('✅ NSE session established');
+      return nseCookies;
+    }
+  } catch (err) {
+    console.log('⚠️ Could not establish NSE session:', err.message);
+  }
+
+  return null;
+}
+
 // Fetch market cap from NSE India API
 async function fetchNSEData(symbol) {
   const cacheKey = `nse_${symbol}`;
@@ -319,15 +359,24 @@ async function fetchNSEData(symbol) {
   if (cached) return cached;
 
   try {
-    const url = `https://www.nseindia.com/api/quote-equity?symbol=${symbol}`;
+    // Get session cookies first
+    const cookies = await getNSESession();
+    if (!cookies) {
+      return null;
+    }
+
+    const url = `https://www.nseindia.com/api/quote-equity?symbol=${encodeURIComponent(symbol)}`;
     const response = await axios.get(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
         'Accept-Language': 'en-US,en;q=0.9',
-        'Referer': `https://www.nseindia.com/get-quotes/equity?symbol=${symbol}`
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Referer': 'https://www.nseindia.com/get-quotes/equity?symbol=' + encodeURIComponent(symbol),
+        'Cookie': cookies,
+        'Connection': 'keep-alive'
       },
-      timeout: 5000
+      timeout: 8000
     });
 
     const data = response.data;
@@ -345,7 +394,12 @@ async function fetchNSEData(symbol) {
     nseCache.set(cacheKey, nseData);
     return nseData;
   } catch (err) {
-    // Silently fail - market cap is optional
+    console.log(`⚠️ NSE data fetch failed for ${symbol}:`, err.message);
+    // Invalidate session on auth errors
+    if (err.response?.status === 401 || err.response?.status === 403) {
+      nseCookies = null;
+      nseSessionExpiry = 0;
+    }
     return null;
   }
 }
