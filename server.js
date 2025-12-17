@@ -320,28 +320,39 @@ let nseSessionExpiry = 0;
 async function getNSESession() {
   const now = Date.now();
 
-  // Return cached cookies if still valid (15 min session)
+  // Return cached cookies if still valid (10 min session)
   if (nseCookies && now < nseSessionExpiry) {
     return nseCookies;
   }
 
   try {
-    const response = await axios.get('https://www.nseindia.com/', {
+    // Visit the market data page first to get proper session
+    const response = await axios.get('https://www.nseindia.com/market-data/live-equity-market', {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9,hi;q=0.8',
         'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive'
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+        'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Windows"',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1'
       },
-      timeout: 10000
+      timeout: 15000,
+      maxRedirects: 5
     });
 
     // Extract cookies from response headers
     const setCookies = response.headers['set-cookie'];
     if (setCookies) {
       nseCookies = setCookies.map(cookie => cookie.split(';')[0]).join('; ');
-      nseSessionExpiry = now + (15 * 60 * 1000); // 15 minutes
+      nseSessionExpiry = now + (10 * 60 * 1000); // 10 minutes
       console.log('✅ NSE session established');
       return nseCookies;
     }
