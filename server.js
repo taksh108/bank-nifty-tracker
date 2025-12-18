@@ -8,6 +8,23 @@ const path = require('path');
 const app = express();
 const cache = new NodeCache({ stdTTL: 5 }); // Cache for 5 seconds (safe with batched API: ~720 calls/hour)
 
+// Fallback issuedSize values (shares outstanding) - used when NSE API fails
+// These rarely change, update manually when needed (stock splits, buybacks, etc.)
+const ISSUED_SIZE_FALLBACK = {
+  HDFCBANK: 15382510606,
+  ICICIBANK: 7150095682,
+  AXISBANK: 3104242612,
+  SBIN: 9230617586,
+  KOTAKBANK: 1988752989,
+  FEDERALBNK: 2462735490,
+  INDUSINDBK: 779075972,
+  IDFCFIRSTB: 8594892611,
+  BANKBARODA: 5171362179,
+  CANBK: 9070651260,
+  PNB: 11492943268,
+  AUBANK: 746660086,
+};
+
 // ============================================
 // REDIS SETUP FOR PERSISTENT STORAGE
 // ============================================
@@ -445,7 +462,7 @@ async function fetchAllStocksBatched() {
               dayHigh: meta.regularMarketDayHigh || null,
               dayLow: meta.regularMarketDayLow || null,
               volume: meta.regularMarketVolume || null,
-              issuedSize: nseData?.issuedSize || null,
+              issuedSize: nseData?.issuedSize || ISSUED_SIZE_FALLBACK[stock.symbol] || null,
               marketCap: nseData?.marketCap || null,
               fiftyTwoWeekHigh: nseData?.fiftyTwoWeekHigh || null,
               fiftyTwoWeekLow: nseData?.fiftyTwoWeekLow || null,
