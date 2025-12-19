@@ -760,13 +760,13 @@
             `;
         }
 
-        // Auto-refresh every 3 seconds during market hours
+        // Auto-refresh every 3 seconds during market hours (including pre-open)
         setInterval(() => {
             const hour = new Date().getHours();
             const minute = new Date().getMinutes();
 
-            // Auto refresh between 9:15 AM to 3:30 PM IST
-            if ((hour === 9 && minute >= 15) || (hour > 9 && hour < 15) || (hour === 15 && minute <= 30)) {
+            // Auto refresh between 9:00 AM (pre-open) to 3:30 PM IST
+            if ((hour >= 9 && hour < 15) || (hour === 15 && minute <= 30)) {
                 fetchStocks();
                 fetchBankNifty();
             }
