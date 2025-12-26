@@ -33,7 +33,8 @@ const ISSUED_SIZE_FALLBACK = {
 let redis = null;
 const REDIS_KEYS = {
   MULTIPLIERS: 'bank_nifty_multipliers',
-  METADATA: 'bank_nifty_metadata'
+  METADATA: 'bank_nifty_metadata',
+  HISTORICAL_LOGS: 'bank_nifty_historical_logs'
 };
 
 // Initialize Redis if credentials are available
@@ -325,6 +326,122 @@ async function updateBankNiftyStocks() {
 // Check for constituent changes (every 24 hours) - doesn't change order
 updateBankNiftyStocks();
 setInterval(updateBankNiftyStocks, 24 * 60 * 60 * 1000);
+
+// ============================================
+// HISTORICAL DATA LOGGING
+// ============================================
+
+// Check if current time is during market hours (9:15 AM - 3:30 PM IST)
+function isDuringMarketHours() {
+  const now = new Date();
+  const istTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  const hours = istTime.getHours();
+  const minutes = istTime.getMinutes();
+
+  // Market hours: 9:15 AM to 3:30 PM IST
+  const currentMinutes = hours * 60 + minutes;
+  const marketOpen = 9 * 60 + 15;  // 9:15 AM
+  const marketClose = 15 * 60 + 30; // 3:30 PM
+
+  return currentMinutes >= marketOpen && currentMinutes <= marketClose;
+}
+
+// Log historical data point
+async function logHistoricalData() {
+  if (!redis) {
+    console.log('⚠️  Redis not configured, skipping historical logging');
+    return;
+  }
+
+  try {
+    console.log('📊 Logging historical data point...');
+
+    // Fetch Bank Nifty index
+    const bankNiftyUrl = 'https://query1.finance.yahoo.com/v8/finance/chart/%5ENSEBANK';
+    const bankNiftyRes = await axios.get(bankNiftyUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+      timeout: 5000
+    });
+
+    const bankNiftyPrice = bankNiftyRes.data?.chart?.result?.[0]?.meta?.regularMarketPrice;
+
+    if (!bankNiftyPrice) {
+      console.log('⚠️  Could not fetch Bank Nifty index');
+      return;
+    }
+
+    // Fetch all stocks to calculate total
+    const stocksData = await fetchAllStocksBatched();
+
+    if (!stocksData) {
+      console.log('⚠️  Could not fetch stocks data');
+      return;
+    }
+
+    // Calculate total of Result column (sum of all stock prices × multipliers)
+    let calculatedTotal = 0;
+    BANK_NIFTY_STOCKS.forEach(stock => {
+      const stockData = stocksData[stock.symbol];
+      if (stockData && stockData.livePrice) {
+        const multiplier = stockMultipliers[stock.symbol] || 1;
+        calculatedTotal += stockData.livePrice * multiplier;
+      }
+    });
+
+    // Create data point
+    const dataPoint = {
+      timestamp: new Date().toISOString(),
+      bankNiftyIndex: bankNiftyPrice,
+      calculatedTotal: calculatedTotal,
+      difference: calculatedTotal - bankNiftyPrice,
+      percentageDiff: ((calculatedTotal - bankNiftyPrice) / bankNiftyPrice * 100).toFixed(4)
+    };
+
+    console.log(`✅ Data logged - Bank Nifty: ₹${bankNiftyPrice.toFixed(2)}, Calculated: ₹${calculatedTotal.toFixed(2)}, Diff: ${dataPoint.percentageDiff}%`);
+
+    // Get existing logs
+    let logs = await redis.get(REDIS_KEYS.HISTORICAL_LOGS);
+    if (typeof logs === 'string') {
+      logs = JSON.parse(logs);
+    }
+    if (!Array.isArray(logs)) {
+      logs = [];
+    }
+
+    // Add new data point
+    logs.push(dataPoint);
+
+    // Keep only last 7 days of data (assuming 5-min intervals, ~75 hours of market time per week)
+    // 75 hours × 12 logs/hour = 900 logs per week
+    const maxLogs = 1000;
+    if (logs.length > maxLogs) {
+      logs = logs.slice(-maxLogs);
+    }
+
+    // Save back to Redis
+    await redis.set(REDIS_KEYS.HISTORICAL_LOGS, JSON.stringify(logs));
+
+  } catch (error) {
+    console.error('❌ Error logging historical data:', error.message);
+  }
+}
+
+// Schedule logging every 5 minutes during market hours
+setInterval(async () => {
+  if (isDuringMarketHours()) {
+    await logHistoricalData();
+  } else {
+    console.log('⏸️  Outside market hours, skipping data logging');
+  }
+}, 5 * 60 * 1000); // 5 minutes
+
+// Log immediately on startup if during market hours
+setTimeout(async () => {
+  if (isDuringMarketHours()) {
+    console.log('🚀 Server started during market hours, logging initial data point...');
+    await logHistoricalData();
+  }
+}, 10000); // Wait 10 seconds for server to fully initialize
 
 // Cache for NSE data (market cap) - longer TTL since it doesn't change often
 const nseCache = new NodeCache({ stdTTL: 300 }); // 5 minutes
@@ -806,6 +923,77 @@ app.post('/api/constituents/refresh', async (req, res) => {
       message: 'Constituents refreshed successfully'
     });
   } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// API endpoint to get historical logs
+app.get('/api/historical', async (req, res) => {
+  try {
+    if (!redis) {
+      return res.status(503).json({
+        success: false,
+        error: 'Redis not configured - historical logging unavailable'
+      });
+    }
+
+    let logs = await redis.get(REDIS_KEYS.HISTORICAL_LOGS);
+    if (typeof logs === 'string') {
+      logs = JSON.parse(logs);
+    }
+    if (!Array.isArray(logs)) {
+      logs = [];
+    }
+
+    // Calculate statistics
+    const stats = {
+      totalPoints: logs.length,
+      averageDifference: 0,
+      maxDifference: 0,
+      minDifference: 0,
+      correlation: 0
+    };
+
+    if (logs.length > 0) {
+      const diffs = logs.map(log => parseFloat(log.percentageDiff));
+      stats.averageDifference = (diffs.reduce((a, b) => a + b, 0) / diffs.length).toFixed(4);
+      stats.maxDifference = Math.max(...diffs).toFixed(4);
+      stats.minDifference = Math.min(...diffs).toFixed(4);
+
+      // Calculate correlation coefficient
+      const bankNiftyValues = logs.map(log => log.bankNiftyIndex);
+      const calculatedValues = logs.map(log => log.calculatedTotal);
+
+      if (bankNiftyValues.length > 1) {
+        const meanBN = bankNiftyValues.reduce((a, b) => a + b, 0) / bankNiftyValues.length;
+        const meanCalc = calculatedValues.reduce((a, b) => a + b, 0) / calculatedValues.length;
+
+        const numerator = bankNiftyValues.reduce((sum, bn, i) =>
+          sum + (bn - meanBN) * (calculatedValues[i] - meanCalc), 0);
+
+        const denomBN = Math.sqrt(bankNiftyValues.reduce((sum, bn) =>
+          sum + Math.pow(bn - meanBN, 2), 0));
+
+        const denomCalc = Math.sqrt(calculatedValues.reduce((sum, calc) =>
+          sum + Math.pow(calc - meanCalc, 2), 0));
+
+        if (denomBN && denomCalc) {
+          stats.correlation = (numerator / (denomBN * denomCalc)).toFixed(4);
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      data: logs,
+      stats: stats,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error fetching historical data:', error);
     res.status(500).json({
       success: false,
       error: error.message
