@@ -8,7 +8,7 @@
 2. Click the **"+"** button in top right → **"New repository"**
 3. Fill in:
    - Repository name: `bank-nifty-tracker`
-   - Description: "Bank Nifty 12 Stock Tracker with Live Prices"
+   - Description: "Bank Nifty 14 Stock Tracker with Live Prices"
    - Keep it **Public** (required for free Cyclic deployment)
    - DON'T initialize with README (we already have one)
 4. Click **"Create repository"**
@@ -63,7 +63,7 @@ git push -u origin main
 ### Test Your Live App:
 - [ ] Visit your Cyclic URL
 - [ ] Check if Bank Nifty index loads
-- [ ] Verify all 12 stocks show data
+- [ ] Verify all 14 stocks show data
 - [ ] Test changing multipliers
 - [ ] Confirm multipliers persist after refresh
 

@@ -1,6 +1,6 @@
-# 🏦 Bank Nifty 12 Tracker
+# 🏦 Bank Nifty 14 Tracker
 
-A real-time investment tracking tool for Bank Nifty's top 12 companies with live price fetching and custom multiplier calculations.
+A real-time investment tracking tool for Bank Nifty's top 14 companies with live price fetching and custom multiplier calculations.
 
 ## 📋 Features
 
@@ -13,20 +13,22 @@ A real-time investment tracking tool for Bank Nifty's top 12 companies with live
 ✅ **Market Status** - Shows if market is open or closed  
 ✅ **Responsive Design** - Works on desktop and mobile  
 
-## 🏢 Tracked Stocks (Bank Nifty 12)
+## 🏢 Tracked Stocks (Bank Nifty 14)
 
 1. HDFC Bank
 2. ICICI Bank
-3. State Bank of India
-4. Kotak Mahindra Bank
-5. Axis Bank
-6. IndusInd Bank
-7. Bandhan Bank
-8. Federal Bank
-9. IDFC First Bank
-10. Punjab National Bank
-11. Bank of Baroda
+3. Axis Bank
+4. State Bank of India
+5. Kotak Mahindra Bank
+6. Federal Bank
+7. IndusInd Bank
+8. IDFC First Bank
+9. Bank of Baroda
+10. Canara Bank
+11. Punjab National Bank
 12. AU Small Finance Bank
+13. Union Bank of India
+14. Yes Bank
 
 ## 🚀 Quick Start Guide
 
@@ -80,7 +82,7 @@ bank-nifty-tracker/
 
 ### API Endpoints
 
-- `GET /api/stocks` - Get all Bank Nifty 12 stocks
+- `GET /api/stocks` - Get all Bank Nifty 14 stocks
 - `GET /api/stocks/:symbol` - Get single stock data
 - `GET /health` - Health check endpoint
 

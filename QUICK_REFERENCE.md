@@ -185,7 +185,7 @@ fetch('http://localhost:3000/api/stocks')
 Before considering it "done":
 
 - [ ] Server starts without errors
-- [ ] All 12 stocks visible in table
+- [ ] All 14 stocks visible in table
 - [ ] Prices show with ₹ symbol
 - [ ] Can change multiplier
 - [ ] Calculated value updates

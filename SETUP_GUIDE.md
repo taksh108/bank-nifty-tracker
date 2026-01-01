@@ -109,7 +109,7 @@ You should see:
 
 You should see:
 - 🟢 Market Open/🔴 Market Closed status
-- Table with 12 bank stocks
+- Table with 14 bank stocks
 - Live prices for each stock
 - Multiplier input boxes
 - Calculated values

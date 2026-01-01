@@ -23,6 +23,8 @@ const ISSUED_SIZE_FALLBACK = {
   CANBK: 9070651260,
   PNB: 11492943268,
   AUBANK: 746660086,
+  UNIONBANK: 8567909020, // Union Bank of India shares outstanding
+  YESBANK: 31411179264, // Yes Bank shares outstanding
 };
 
 // ============================================
@@ -142,6 +144,7 @@ if (process.env.MULTIPLIER_PIN) {
 const BUFFER_BANK_NIFTY_STOCKS = [
   'HDFCBANK', 'ICICIBANK', 'SBIN', 'KOTAKBANK', 'AXISBANK', 'INDUSINDBK',
   'CANBK', 'FEDERALBNK', 'IDFCFIRSTB', 'PNB', 'BANKBARODA', 'AUBANK',
+  'UNIONBANK', 'YESBANK',
   'BANDHANBNK' // Keep for backward compatibility with saved multipliers
 ];
 
@@ -208,7 +211,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// Default Bank Nifty 12 stocks (custom order)
+// Default Bank Nifty 14 stocks (custom order)
 const DEFAULT_BANK_NIFTY_STOCKS = [
   { symbol: 'HDFCBANK', name: 'HDFC Bank' },
   { symbol: 'ICICIBANK', name: 'ICICI Bank' },
@@ -221,7 +224,9 @@ const DEFAULT_BANK_NIFTY_STOCKS = [
   { symbol: 'BANKBARODA', name: 'Bank of Baroda' },
   { symbol: 'CANBK', name: 'Canara Bank' },
   { symbol: 'PNB', name: 'Punjab National Bank' },
-  { symbol: 'AUBANK', name: 'AU Small Finance Bank' }
+  { symbol: 'AUBANK', name: 'AU Small Finance Bank' },
+  { symbol: 'UNIONBANK', name: 'Union Bank of India' },
+  { symbol: 'YESBANK', name: 'Yes Bank' }
 ];
 
 // Dynamic stock list (updated from NSE)
@@ -282,7 +287,7 @@ async function fetchBankNiftyConstituents() {
           name: SYMBOL_NAME_MAP[stock.symbol] || stock.symbol
         }));
 
-      if (constituents.length >= 10) { // Sanity check - should be 12 stocks
+      if (constituents.length >= 10) { // Sanity check - should be 14 stocks
         console.log(`Successfully fetched ${constituents.length} Bank Nifty constituents`);
         return constituents;
       }

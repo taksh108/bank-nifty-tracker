@@ -17,13 +17,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture Overview
 
-This is a real-time stock tracking application for Bank Nifty's 12 banking stocks with a simple two-tier architecture:
+This is a real-time stock tracking application for Bank Nifty's 14 banking stocks with a simple two-tier architecture:
 
 ### Backend (server.js)
 - **Express.js server** serving both API endpoints and static files
 - **Yahoo Finance API integration** - fetches live stock data from `https://query1.finance.yahoo.com/v8/finance/chart/{SYMBOL}.NS`
 - **NodeCache caching layer** - 60-second TTL to avoid rate limits (Yahoo Finance allows ~2000 requests/hour)
-- **Bank Nifty 12 stock list** hardcoded in `BANK_NIFTY_STOCKS` array (lines 14-27)
+- **Bank Nifty 14 stock list** hardcoded in `BANK_NIFTY_STOCKS` array (lines 14-27)
 
 ### Frontend (public/index.html)
 - **Single HTML file** with vanilla JavaScript - no build process required
@@ -32,7 +32,7 @@ This is a real-time stock tracking application for Bank Nifty's 12 banking stock
 - **Real-time calculations** - multiplies live prices by user input for custom investment scenarios
 
 ### Key API Endpoints
-- `GET /api/stocks` - Returns all 12 banking stocks with live prices
+- `GET /api/stocks` - Returns all 14 banking stocks with live prices
 - `GET /api/stocks/:symbol` - Returns single stock data
 - `GET /health` - Server health check
 
@@ -47,7 +47,7 @@ This is a real-time stock tracking application for Bank Nifty's 12 banking stock
 ## Key Configuration Points
 
 ### Stock List (server.js:14-27)
-The 12 Bank Nifty stocks are hardcoded. Each entry requires:
+The 14 Bank Nifty stocks are hardcoded. Each entry requires:
 ```javascript
 { symbol: 'HDFCBANK', name: 'HDFC Bank' }
 ```
