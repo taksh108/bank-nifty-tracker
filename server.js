@@ -455,7 +455,7 @@ const nseCache = new NodeCache({ stdTTL: 300 }); // 5 minutes
 let nseCookies = null;
 let nseSessionExpiry = 0;
 
-// Get NSE session cookies
+// Get NSE session cookies with improved headers
 async function getNSESession() {
   const now = Date.now();
 
@@ -467,13 +467,20 @@ async function getNSESession() {
   try {
     const response = await axios.get('https://www.nseindia.com/', {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
         'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive'
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Cache-Control': 'max-age=0',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-User': '?1',
+        'Sec-Fetch-Dest': 'document'
       },
-      timeout: 10000
+      timeout: 10000,
+      maxRedirects: 5
     });
 
     // Extract cookies from response headers
@@ -491,6 +498,90 @@ async function getNSESession() {
   return null;
 }
 
+// Fetch all Bank Nifty stocks from NSE constituents API (most accurate)
+async function fetchNSEBankNiftyPrices() {
+  try {
+    const cookies = await getNSESession();
+    if (!cookies) {
+      return null;
+    }
+
+    const url = 'https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20BANK';
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Referer': 'https://www.nseindia.com/market-data/live-equity-market',
+        'Cookie': cookies,
+        'Connection': 'keep-alive',
+        'Sec-Fetch-Site': 'same-origin',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Dest': 'empty'
+      },
+      timeout: 10000
+    });
+
+    if (response.data && response.data.data) {
+      const priceMap = {};
+      response.data.data.forEach(stock => {
+        if (stock.symbol && stock.symbol !== 'NIFTY BANK') {
+          priceMap[stock.symbol] = {
+            livePrice: stock.lastPrice,
+            previousClose: stock.previousClose,
+            dayHigh: stock.dayHigh,
+            dayLow: stock.dayLow,
+            volume: stock.totalTradedVolume,
+            change: stock.change,
+            pChange: stock.pChange
+          };
+        }
+      });
+      console.log(`✅ Fetched NSE prices for ${Object.keys(priceMap).length} stocks`);
+      return priceMap;
+    }
+  } catch (err) {
+    console.log('⚠️ NSE Bank Nifty API failed:', err.message);
+  }
+  return null;
+}
+
+// Fetch shares outstanding from Yahoo Finance (fallback when NSE fails)
+async function fetchYahooFinanceData(symbol) {
+  try {
+    // Yahoo Finance v7 quote endpoint - more accessible
+    const url = `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${symbol}.NS`;
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+        'Referer': 'https://finance.yahoo.com/'
+      },
+      timeout: 5000
+    });
+
+    const result = response.data?.quoteResponse?.result?.[0];
+    const sharesOutstanding = result?.sharesOutstanding;
+    const marketCap = result?.marketCap;
+    const fiftyTwoWeekHigh = result?.fiftyTwoWeekHigh;
+    const fiftyTwoWeekLow = result?.fiftyTwoWeekLow;
+
+    if (sharesOutstanding || marketCap) {
+      console.log(`✅ Yahoo Finance data for ${symbol}: shares=${sharesOutstanding?.toLocaleString()}, mktCap=${marketCap?.toLocaleString()}`);
+      return {
+        issuedSize: sharesOutstanding,
+        marketCap: marketCap,
+        fiftyTwoWeekHigh: fiftyTwoWeekHigh,
+        fiftyTwoWeekLow: fiftyTwoWeekLow
+      };
+    }
+  } catch (err) {
+    console.log(`⚠️ Yahoo Finance data fetch failed for ${symbol}:`, err.message);
+  }
+  return null;
+}
+
 // Fetch market cap from NSE India API
 async function fetchNSEData(symbol) {
   const cacheKey = `nse_${symbol}`;
@@ -501,7 +592,8 @@ async function fetchNSEData(symbol) {
     // Get session cookies first
     const cookies = await getNSESession();
     if (!cookies) {
-      return null;
+      // Try Yahoo Finance as fallback
+      return await fetchYahooFinanceData(symbol);
     }
 
     const url = `https://www.nseindia.com/api/quote-equity?symbol=${encodeURIComponent(symbol)}`;
@@ -539,11 +631,12 @@ async function fetchNSEData(symbol) {
       nseCookies = null;
       nseSessionExpiry = 0;
     }
-    return null;
+    // Try Yahoo Finance as fallback
+    return await fetchYahooFinanceData(symbol);
   }
 }
 
-// Fetch ALL stocks in parallel using Yahoo for prices + NSE for market cap
+// Fetch ALL stocks in parallel - NSE primary, Yahoo fallback
 async function fetchAllStocksBatched() {
   const cacheKey = 'all_stocks_batch';
   const cached = cache.get(cacheKey);
@@ -554,44 +647,78 @@ async function fetchAllStocksBatched() {
   }
 
   try {
+    // Try NSE Bank Nifty API first (most accurate, single API call for all stocks)
+    const nsePrices = await fetchNSEBankNiftyPrices();
+
     const headers = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     };
 
-    // Fetch all stocks in parallel - Yahoo for prices, NSE for market cap
+    // Fetch all stocks in parallel - NSE prices if available, Yahoo fallback
     const promises = BANK_NIFTY_STOCKS.map(async (stock) => {
       try {
-        // Fetch Yahoo chart data and NSE data in parallel
-        const [chartRes, nseData] = await Promise.all([
-          axios.get(
+        const nsePrice = nsePrices?.[stock.symbol];
+
+        // If NSE prices available, use them; otherwise fetch from Yahoo
+        let priceData;
+        if (nsePrice) {
+          // Use NSE prices (most accurate)
+          priceData = {
+            livePrice: nsePrice.livePrice,
+            previousClose: nsePrice.previousClose,
+            dayHigh: nsePrice.dayHigh,
+            dayLow: nsePrice.dayLow,
+            volume: nsePrice.volume,
+            change: nsePrice.change,
+            pChange: nsePrice.pChange,
+            marketState: 'REGULAR',
+            currency: 'INR'
+          };
+        } else {
+          // Fallback to Yahoo Finance
+          const chartRes = await axios.get(
             `https://query1.finance.yahoo.com/v8/finance/chart/${stock.symbol}.NS`,
             { headers, timeout: 5000 }
-          ),
-          fetchNSEData(stock.symbol)
-        ]);
-
-        const meta = chartRes.data?.chart?.result?.[0]?.meta;
-
-        if (meta) {
-          return {
-            symbol: stock.symbol,
-            data: {
-              symbol: stock.symbol,
-              livePrice: meta.regularMarketPrice || null,
-              previousClose: meta.chartPreviousClose || null,
-              currency: meta.currency || 'INR',
-              marketState: meta.marketState,
-              dayHigh: meta.regularMarketDayHigh || null,
-              dayLow: meta.regularMarketDayLow || null,
-              volume: meta.regularMarketVolume || null,
-              issuedSize: nseData?.issuedSize || ISSUED_SIZE_FALLBACK[stock.symbol] || null,
-              marketCap: nseData?.marketCap || null,
-              fiftyTwoWeekHigh: nseData?.fiftyTwoWeekHigh || null,
-              fiftyTwoWeekLow: nseData?.fiftyTwoWeekLow || null,
-              lastUpdated: new Date().toISOString()
-            }
+          );
+          const meta = chartRes.data?.chart?.result?.[0]?.meta;
+          if (!meta) {
+            throw new Error('No Yahoo data');
+          }
+          priceData = {
+            livePrice: meta.regularMarketPrice,
+            previousClose: meta.chartPreviousClose,
+            dayHigh: meta.regularMarketDayHigh,
+            dayLow: meta.regularMarketDayLow,
+            volume: meta.regularMarketVolume,
+            marketState: meta.marketState,
+            currency: meta.currency || 'INR'
           };
         }
+
+        // Fetch NSE market cap data separately (for issuedSize)
+        const nseData = await fetchNSEData(stock.symbol);
+
+        return {
+          symbol: stock.symbol,
+          data: {
+            symbol: stock.symbol,
+            livePrice: priceData.livePrice || null,
+            previousClose: priceData.previousClose || null,
+            currency: priceData.currency || 'INR',
+            marketState: priceData.marketState,
+            dayHigh: priceData.dayHigh || null,
+            dayLow: priceData.dayLow || null,
+            volume: priceData.volume || null,
+            issuedSize: nseData?.issuedSize || ISSUED_SIZE_FALLBACK[stock.symbol] || null,
+            marketCap: nseData?.marketCap ||
+              (priceData.livePrice && (nseData?.issuedSize || ISSUED_SIZE_FALLBACK[stock.symbol]))
+                ? (nseData?.issuedSize || ISSUED_SIZE_FALLBACK[stock.symbol]) * priceData.livePrice
+                : null,
+            fiftyTwoWeekHigh: nseData?.fiftyTwoWeekHigh || null,
+            fiftyTwoWeekLow: nseData?.fiftyTwoWeekLow || null,
+            lastUpdated: new Date().toISOString()
+          }
+        };
       } catch (err) {
         console.error(`Failed ${stock.symbol}: ${err.message}`);
       }
